@@ -10,6 +10,8 @@
 module vga (
     // pixel clock
     input pclk,
+    // color
+    input [7:0] color,
     // VGA output
     output reg hs,
     output reg vs,
@@ -19,9 +21,8 @@ module vga (
     output VGA_DE
 );
 
-  // t   standard NTSC video   640x480i@29.914    784    525      15.7347 - -      12.336       22    58   64      8    6   31        arcade/game
-  // g   Nintendo 64 NTSC      640x480i@29.958    852    525      15.7277 - -      13.400       32    62  118      8    5   32        arcade/game
   // g   Sega Mega Drive NTSC  320x240@60         426    262      15.7277 - -       6.700       16    31   59      4    3   15        arcade/game
+  // g   TurboGrafx-16 NTSC    352x240@60         469    262      15.7420 - -       7.383       18    34   65      4    3   15        arcade/game modelines; videogame, TurboGrafx-16, PC-Engine, game console
 
   parameter H = 320;  // width of visible area
   parameter HFP = 16;  // unused time before hsync
@@ -36,67 +37,50 @@ module vga (
 
   reg [9:0] h_cnt;  // horizontal pixel counter
   reg [9:0] v_cnt;  // vertical pixel counter
+  reg       hblank;  // horizontal blank registry
+  reg       vblank;  // vertical blank registry
 
-  reg       hblank;
-  reg       vblank;
 
-  // both counters count from the begin of the visibla area
-
-  // horizontal pixel counter
+  // --- Sync and Counters
   always @(posedge pclk) begin
+    // --- Horizontal counter
     if (h_cnt == H + HFP + HS + HBP - 1) h_cnt <= 10'b0;
     else h_cnt <= h_cnt + 10'b1;
 
-    // generate negative hsync signal
+    // --- Generate negative hsync signal
     if (h_cnt == H + HFP) hs <= 1'b0;
     if (h_cnt == H + HFP + HS) hs <= 1'b1;
-    if (h_cnt == H + HFP + HS) hblank <= 1'b1;
+
+    // --- HBlanking register
+    if (h_cnt >= H) hblank <= 1'b1;
     else hblank <= 1'b0;
 
-  end
 
-  // veritical pixel counter
-  always @(posedge pclk) begin
-    // the vertical counter is processed at the begin of each hsync
+    // --- Vertical counter
     if (h_cnt == H + HFP) begin
       if (v_cnt == VS + VBP + V + VFP - 1) v_cnt <= 10'b0;
       else v_cnt <= v_cnt + 10'b1;
-
-      // generate negative vsync signal
-      if (v_cnt == V + VFP) vs <= 1'b0;
-      if (v_cnt == V + VFP + VS) vs <= 1'b1;
-      if (v_cnt == V + VFP + VS) vblank <= 1'b1;
-      else vblank <= 1'b0;
     end
+
+    // --- Generate negative vsync signal
+    if (v_cnt == V + VFP) vs <= 1'b0;
+    if (v_cnt == V + VFP + VS) vs <= 1'b1;
+
+    // --- VBlanking register
+    if (v_cnt >= V) vblank <= 1'b1;
+    else vblank <= 1'b0;
   end
 
-  // read VRAM
-  reg [13:0] video_counter;
+
+  // --- draw bounding box
   reg [7:0] pixel;
-  reg de;
 
   always @(posedge pclk) begin
-    // The video counter is being reset at the begin of each vsync.
-    // Otherwise it's increased every fourth pixel in the visible area.
-    // At the end of the first three of four lines the counter is
-    // decreased by the total line length to display the same contents
-    // for four lines so 100 different lines are displayed on the 400
-    // VGA lines.
-
-    // visible area?
+    // are we on the visible area?
     if ((v_cnt < V) && (h_cnt < H)) begin
-      if (h_cnt[1:0] == 2'b11) video_counter <= video_counter + 14'd1;
-
-      pixel <= (v_cnt[2] ^ h_cnt[2]) ? 8'h00 : 8'hff;  // checkboard
-      de <= 1;
-    end else begin
-      if (h_cnt == H + HFP) begin
-        if (v_cnt == V + VFP) video_counter <= 14'd0;
-        else if ((v_cnt < V) && (v_cnt[1:0] != 2'b11)) video_counter <= video_counter - 14'd160;
-        de <= 0;
-      end
-
-      pixel <= 8'h00;  // black
+      if (h_cnt == 10'b0 || v_cnt == 10'b0) pixel <= 8'b000_111_00;
+      else if (h_cnt == H - 1 || v_cnt == V - 1) pixel <= color;
+      else pixel <= 8'h00;
     end
   end
 
@@ -105,7 +89,7 @@ module vga (
   assign g = {pixel[4:2], pixel[4:2], pixel[4:3]};
   assign b = {pixel[1:0], pixel[1:0], pixel[1:0], pixel[1:0]};
 
-  //assign VGA_DE  = ~(hblank | vblank);
-  assign VGA_DE = de;
+  // disable video if we're blanking
+  assign VGA_DE = ~(hblank | vblank);
 
 endmodule

@@ -171,7 +171,6 @@ module emu (
   assign {DDRAM_CLK, DDRAM_BURSTCNT, DDRAM_ADDR, DDRAM_DIN, DDRAM_BE, DDRAM_RD, DDRAM_WE} = '0;
 
   assign VGA_SL = 0;
-  assign VGA_F1 = 0;
   assign VGA_SCALER = 0;
 
   assign AUDIO_S = 0;
@@ -208,8 +207,9 @@ module emu (
     "-;",
     "-;",
     "V,v",
+    "J1,Red;",
+    "jn,A;",
     `BUILD_DATE
-
   };
 
 
@@ -217,6 +217,7 @@ module emu (
   // HPS is the module that communicates between the linux and fpga
   //
   wire [31:0] status;
+  wire [31:0] joy;
 
   hps_io #(
       .STRLEN(($size(CONF_STR) >> 3)),
@@ -225,10 +226,9 @@ module emu (
   ) hps_io (
       .clk_sys(clk_sys),
       .HPS_BUS(HPS_BUS),
-      .status (status),
-
+      .status(status),
+      .joystick_0(joy),
       .conf_str(CONF_STR)
-
   );
 
 
@@ -245,17 +245,20 @@ module emu (
   );
 
   ///////////////////////////////////////////////////
+  wire [7:0] color = joy[4] ? 8'b111_000_00 : 8'hFF;
 
   assign CLK_VIDEO = clk_sys;
   assign CE_PIXEL  = 1;
+
   vga vga (
       .pclk  (clk_sys),
+      .color (color),
       .hs    (VGA_HS),
       .vs    (VGA_VS),
       .r     (VGA_R),
       .g     (VGA_G),
       .b     (VGA_B),
-      .VGA_DE(VGA_DE)
+      .VGA_DE(VGA_DE),
   );
 
 endmodule
